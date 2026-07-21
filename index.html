@@ -155,8 +155,9 @@ function renderToday(){
  document.getElementById("progressBar").style.width=(done/6*100)+"%";
  document.getElementById("dailyList").innerHTML=calls.length?calls.map(c=>{
    const s=standById(c.id); if(!s)return "";
-   return `<div class="card"><div class="row between"><div><b>${esc(s.stand)}</b><div class="muted">${esc(s.cidade||"")} · ${esc(s.telefone||"")}</div></div><span>${c.done?"✅":"📞"}</span></div>
-   <div class="actions"><a class="call" href="${phoneHref(s.telefone)}">Ligar</a><button class="btn" onclick="openLog('${s.id}')">Registar</button><button class="btn" onclick="quickNoAnswer('${s.id}')">Não atendeu</button></div></div>`;
+   const currentStatus=c.result || s.estado || "Por contactar";
+   return `<div class="card"><div class="row between"><div><b>${esc(s.stand)}</b><div class="muted">${esc(s.cidade||"")} · ${esc(s.telefone||"")}</div></div><span class="tag">${esc(currentStatus)}</span></div>
+   <div class="actions"><a class="call" href="${phoneHref(s.telefone)}">Ligar</a><button class="btn primary" onclick="openLog('${s.id}')">${c.done?"Alterar estado":"Registar"}</button><button class="btn" onclick="quickNoAnswer('${s.id}')">Não atendeu</button></div></div>`;
  }).join(""):`<div class="card muted">Ainda não tens chamadas para hoje.</div>`;
 }
 function quickNoAnswer(id){
@@ -172,6 +173,10 @@ function openLog(id){
  <div class="row between"><h2>${esc(s.stand)}</h2><button class="btn" onclick="closeModal()">Fechar</button></div>
  <div class="muted">${esc(s.telefone||"")} · ${esc(s.cidade||"")}</div>
  <div class="actions"><a class="call" href="${phoneHref(s.telefone)}">Ligar agora</a></div>
+ <label>Estado rápido</label>
+ <select id="quickStatus" onchange="saveQuickStatus('${id}')">
+   ${["Por contactar","Contactado","Não atendeu","Follow-up","Reunião","Proposta","Cliente","Sem interesse"].map(x=>`<option ${x===(todayCalls().find(c=>String(c.id)===String(id))?.result || s.estado || "Por contactar")?"selected":""}>${x}</option>`).join("")}
+ </select>
  <label>Resumo da chamada</label>
  <textarea id="voiceText" placeholder="Ex.: Falei com o João. Usa Excel, mostrou interesse no Importool e pediu uma demo quinta-feira."></textarea>
  <button class="btn primary bigmic" id="micBtn" onclick="startDictation()">🎤 Ditar resumo</button>
@@ -179,6 +184,32 @@ function openLog(id){
  <div id="analysis"></div>`;
  document.getElementById("modal").classList.add("open");
 }
+function saveQuickStatus(id){
+ const status=document.getElementById("quickStatus").value;
+ const s=standById(id);
+ const c=todayCalls().find(x=>String(x.id)===String(id));
+
+ if(status==="Não atendeu"){
+   s.estado="Contactado";
+ } else {
+   s.estado=status;
+ }
+ s.ultimoContacto=new Date().toISOString();
+
+ if(c){
+   c.result=status;
+   c.done=!["Por contactar","Contactado"].includes(status);
+ }
+
+ db.history.push({
+   id,
+   date:new Date().toISOString(),
+   result:status,
+   summary:"Estado alterado manualmente para "+status
+ });
+ save();
+} 
+
 function closeModal(){document.getElementById("modal").classList.remove("open")}
 
 let recognition=null;
@@ -283,7 +314,20 @@ function openStand(id){
  document.getElementById("modal").classList.add("open");
 }
 function saveStand(id){
- const s=standById(id); s.contacto=document.getElementById("fContact").value;s.estado=document.getElementById("fStatus").value;s.prioridade=document.getElementById("fPriority").value;s.notas=document.getElementById("fNotes").value;save();closeModal();
+ const s=standById(id);
+ s.contacto=document.getElementById("fContact").value;
+ s.estado=document.getElementById("fStatus").value;
+ s.prioridade=document.getElementById("fPriority").value;
+ s.notas=document.getElementById("fNotes").value;
+
+ // Mantém o cartão da página inicial sincronizado com o estado atual do stand.
+ const c=todayCalls().find(x=>String(x.id)===String(id));
+ if(c){
+   c.result=s.estado;
+   c.done=!["Por contactar","Contactado"].includes(s.estado);
+ }
+ save();
+ closeModal();
 }
 function renderResults(){
  const vals={
